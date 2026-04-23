@@ -17,11 +17,10 @@ run:
 	@python3 $(NAME) $(CONFIG_FILE)
 
 install:
-	@pip install -r requirements.txt
-	pip install mlx-*.whl
+	pip install flake8 mypy
 
 debug:
-	python3 -m pdb $(NAME) $(CONFIG_FILE)
+	@python3 -m pdb $(NAME) $(CONFIG_FILE)
 
 lint:
 	flake8 .
@@ -31,12 +30,8 @@ lint-strict:
 	flake8 .
 	mypy . --strict
 
-build:
-	@python3 -m pip install --quiet --upgrade build
-	@python3 -m build
-
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
-	rm -rf .mypy_cache build dist *.egg-infoC
+	rm -rf .mypy_cache build dist *.egg-info
 
-.PHONY: install run debug lint lint-strict build clean
+.PHONY: install run debug lint lint-strict clean
