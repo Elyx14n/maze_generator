@@ -5,8 +5,7 @@ from .constants import Config, Grid, Cell, FORTY_TWO, N, S, E, W
 from .utils import in_bounds
 
 DIR_CHAR = {N: "N", E: "E", S: "S", W: "W"}
-DX_CHAR = {"E": 1, "W": -1, "N": 0, "S": 0}
-DY_CHAR = {"E": 0, "W": 0, "N": -1, "S": 1}
+CHAR_DIR = {v: k for k, v in DIR_CHAR.items()}
 
 DC = {E: 1, W: -1, N: 0, S: 0}
 DR = {E: 0, W: 0, N: -1, S: 1}
@@ -33,9 +32,6 @@ class Maze:
             self._dfs()
             if not self.perfect:
                 self._add_loops()
-            if self.grid[self.entry_row][self.entry_col].is_42 or self.grid[self.exit_row][self.exit_col].is_42:
-                self.reset()
-                continue
             if not self._solve():
                 self.reset()
                 continue
@@ -60,6 +56,11 @@ class Maze:
             if in_bounds(row, col, self.rows, self.cols):
                 self.grid[row][col].is_42 = True
 
+        if self.grid[self.entry_row][self.entry_col].is_42:
+            raise ValueError("Entry point overlaps the 42 pattern")
+        if self.grid[self.exit_row][self.exit_col].is_42:
+            raise ValueError("Exit point overlaps the 42 pattern")
+
     def _dfs(self) -> None:
         visited = [[False] * self.cols for _ in range(self.rows)]
         for row in range(self.rows):
@@ -67,23 +68,16 @@ class Maze:
                 if self.grid[row][col].is_42:
                     visited[row][col] = True
 
-        stack: List[Cell] = []
-
-        start = self.grid[self.random.randrange(
-            self.rows)][self.random.randrange(self.cols)]
-        while start.is_42:
-            start = self.grid[self.random.randrange(
-                self.rows)][self.random.randrange(self.cols)]
-        stack.append(start)
+        non_42 = [cell for row in self.grid for cell in row if not cell.is_42]
+        start = self.random.choice(non_42)
+        stack: List[Cell] = [start]
         visited[start.row][start.col] = True
 
-        while (stack):
+        while stack:
             curr = stack[-1]
-            dirs = [N, E, S, W]
             valid = []
-            for d in dirs:
-                nr = curr.row + DR[d]
-                nc = curr.col + DC[d]
+            for d in [N, E, S, W]:
+                nr, nc = curr.row + DR[d], curr.col + DC[d]
                 if in_bounds(nr, nc, self.rows, self.cols) and not visited[nr][nc]:
                     valid.append(d)
 
@@ -93,10 +87,8 @@ class Maze:
 
             self.random.shuffle(valid)
             d = valid[0]
-            nr = curr.row + DR[d]
-            nc = curr.col + DC[d]
+            nr, nc = curr.row + DR[d], curr.col + DC[d]
 
-            # carve walls between curr and neighbor
             curr.walls &= ~d
             self.grid[nr][nc].walls &= ~OPPOSITE[d]
 
@@ -125,45 +117,35 @@ class Maze:
             self.grid[nr][nc].walls &= ~OPPOSITE[d]
 
     def _solve(self) -> bool:
-        start = (self.grid[self.entry_row][self.entry_col].row,
-                 self.grid[self.entry_row][self.entry_col].col)
+        start = (self.entry_row, self.entry_col)
         queue = deque([start])
-        visited = set([start])
+        visited = {start}
         parent: Dict[Tuple[int, int], Tuple[Tuple[int, int], int]] = {}
 
-        found = False
         while queue:
             row, col = queue.popleft()
             if (row, col) == (self.exit_row, self.exit_col):
-                found = True
-                break
+                path = []
+                curr = (self.exit_row, self.exit_col)
+                while curr != start:
+                    prev, d = parent[curr]
+                    path.append(DIR_CHAR[d])
+                    curr = prev
+                self.path = "".join(reversed(path))
+                r, c = self.entry_row, self.entry_col
+                self.grid[r][c].is_path = True
+                for ch in self.path:
+                    d = CHAR_DIR[ch]
+                    r, c = r + DR[d], c + DC[d]
+                    self.grid[r][c].is_path = True
+                return True
 
             for d in [N, E, S, W]:
                 if not (self.grid[row][col].walls & d):
-                    nr = row + DR[d]
-                    nc = col + DC[d]
+                    nr, nc = row + DR[d], col + DC[d]
                     if in_bounds(nr, nc, self.rows, self.cols) and (nr, nc) not in visited and not self.grid[nr][nc].is_42:
                         visited.add((nr, nc))
                         queue.append((nr, nc))
                         parent[(nr, nc)] = ((row, col), d)
 
-        if not found:
-            return False
-
-        path = []
-        curr = (self.exit_row, self.exit_col)
-
-        while curr != start:
-            prev, d = parent[curr]
-            path.append(DIR_CHAR[d])
-            curr = prev
-
-        self.path = "".join(reversed(path))
-        r, c = self.entry_row, self.entry_col
-        self.grid[r][c].is_path = True
-        for dir in self.path:
-            r += DY_CHAR[dir]
-            c += DX_CHAR[dir]
-            self.grid[r][c].is_path = True
-
-        return True
+        return False
